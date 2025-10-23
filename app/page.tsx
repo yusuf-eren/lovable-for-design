@@ -1,103 +1,354 @@
-import Image from "next/image";
+'use client';
+
+import Image from 'next/image';
+import { useState, useEffect, useRef } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useRunWS } from '@/app/hooks/useRunWS';
+import { ChatFeed } from '@/app/components/ChatFeed';
+import { ChatInput } from '@/app/components/ChatInput';
+import { HeroSection } from '@/app/components/HeroSection';
+import { DesignCanvas, type DesignCanvasRef, type ExportOptions } from '@/app/components/DesignCanvas';
+import { DesignHeader } from '@/app/components/DesignHeader';
+import { PropertiesPanel } from '@/app/components/PropertiesPanel';
+import { ResizablePanel } from '@/app/components/ResizablePanel';
+import type { DesignOperation } from '@/app/types/design';
 
 export default function Home() {
-  return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const [dragActive, setDragActive] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [showThinking, setShowThinking] = useState(false);
+  const [selectedOperationId, setSelectedOperationId] = useState<string | null>(null);
+  const [isDirty, setIsDirty] = useState(false);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
+  const designCanvasRef = useRef<DesignCanvasRef>(null);
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const wsUrl = 'ws://localhost:8787';
+  const { state, socket, dispatch } = useRunWS({ url: wsUrl });
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+  useEffect(() => {
+    const lastRaw = state.raw[state.raw.length - 1];
+
+    if (lastRaw?.type === 'streaming' && lastRaw?.data?.conversationId) {
+      const chatId = lastRaw.data.conversationId;
+      if (searchParams.get('chatId') !== chatId) {
+        router.replace(`?chatId=${chatId}`);
+      }
+    }
+
+    if (lastRaw?.type === 'raw_model_stream_event') {
+      const dataType = lastRaw?.data?.type;
+      if (
+        dataType === 'response_started' ||
+        dataType === 'output_text_delta' ||
+        dataType === 'response.output_text.delta'
+      ) {
+        setShowThinking(false);
+      }
+    }
+
+    if (lastRaw?.type === 'complete') {
+      setIsProcessing(false);
+      setShowThinking(false);
+    }
+
+    if (lastRaw?.type === 'design_saved') {
+      setIsDirty(false);
+    }
+  }, [state.raw, router, searchParams]);
+
+  useEffect(() => {
+    if (chatScrollRef.current) {
+      chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
+    }
+  }, [state.timeline, showThinking]);
+
+  const handleDrag = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === 'dragenter' || e.type === 'dragover') {
+      setDragActive(true);
+    } else if (e.type === 'dragleave') {
+      setDragActive(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+  };
+
+  const handleSendMessage = (text: string, files: File[]) => {
+    if (!text.trim() && files.length === 0) return;
+
+    dispatch({
+      type: 'local_user_message',
+      text,
+    });
+
+    setIsProcessing(true);
+    setShowThinking(true);
+
+    if (socket.current?.readyState === WebSocket.OPEN) {
+      socket.current.send(
+        JSON.stringify({
+          kind: 'message',
+          message: text,
+          conversationId: state.conversationId,
+        })
+      );
+    }
+  };
+
+  const handleNewChat = () => {
+    const url = new URL(window.location.href);
+    url.searchParams.delete('chatId');
+    window.location.href = url.toString();
+  };
+
+  const handleExport = (options: ExportOptions) => {
+    designCanvasRef.current?.exportDesign(options);
+  };
+
+  const handleUpdateOperation = (operationId: string, updates: any) => {
+    if (!state.design) return;
+
+    dispatch({
+      type: 'design_update',
+      data: {
+        design: {
+          ...state.design,
+          operations: state.design.operations.map((op: DesignOperation) => {
+            if (op.id === operationId) {
+              if (updates.zIndex !== undefined) {
+                return { ...op, zIndex: updates.zIndex };
+              }
+              if (op.type === 'shape' || op.type === 'text' || op.type === 'image') {
+                return {
+                  ...op,
+                  object: {
+                    ...op.object,
+                    ...(updates.x !== undefined && { left: updates.x }),
+                    ...(updates.y !== undefined && { top: updates.y }),
+                    ...(updates.fill !== undefined && { fill: updates.fill }),
+                    ...(updates.opacity !== undefined && { opacity: updates.opacity }),
+                    ...(updates.rotation !== undefined && { angle: updates.rotation }),
+                    ...(updates.width !== undefined && { width: updates.width }),
+                    ...(updates.height !== undefined && { height: updates.height }),
+                    ...(updates.radius !== undefined && { radius: updates.radius }),
+                    ...(updates.text !== undefined && { text: updates.text }),
+                    ...(updates.fontSize !== undefined && { fontSize: updates.fontSize }),
+                    ...(updates.fontFamily !== undefined && { fontFamily: updates.fontFamily }),
+                    ...(updates.fontWeight !== undefined && { fontWeight: updates.fontWeight }),
+                  },
+                };
+              }
+            }
+            return op;
+          }),
+          updatedAt: new Date(),
+        },
+      },
+    });
+    setIsDirty(true);
+  };
+
+  const handleDeleteOperation = (operationId: string) => {
+    if (!state.design) return;
+
+    dispatch({
+      type: 'design_update',
+      data: {
+        design: {
+          ...state.design,
+          operations: state.design.operations.filter((op: DesignOperation) => op.id !== operationId),
+          updatedAt: new Date(),
+        },
+      },
+    });
+    setSelectedOperationId(null);
+    setIsDirty(true);
+  };
+
+  const handleBringForward = (operationId: string) => {
+    const operation = state.design?.operations.find((op: DesignOperation) => op.id === operationId);
+    if (operation) {
+      const currentZ = operation.zIndex ?? 0;
+      handleUpdateOperation(operationId, { zIndex: currentZ + 1 });
+    }
+  };
+
+  const handleSendBackward = (operationId: string) => {
+    const operation = state.design?.operations.find((op: DesignOperation) => op.id === operationId);
+    if (operation) {
+      const currentZ = operation.zIndex ?? 0;
+      handleUpdateOperation(operationId, { zIndex: currentZ - 1 });
+    }
+  };
+
+  const handleSaveDesign = () => {
+    if (socket.current?.readyState === WebSocket.OPEN && state.design) {
+      socket.current.send(
+        JSON.stringify({
+          kind: 'save_design',
+          design: state.design,
+          conversationId: state.conversationId,
+        })
+      );
+    }
+  };
+
+  const handleLoadVersion = (version: number) => {
+    if (socket.current?.readyState === WebSocket.OPEN) {
+      socket.current.send(
+        JSON.stringify({
+          kind: 'load_version',
+          version,
+          conversationId: state.conversationId,
+        })
+      );
+      setIsDirty(false);
+    }
+  };
+
+  const handleApprovePlan = (planId: string) => {
+    if (socket.current?.readyState === WebSocket.OPEN) {
+      socket.current.send(
+        JSON.stringify({
+          kind: 'approve_plan',
+          planId,
+          conversationId: state.conversationId,
+        })
+      );
+    }
+  };
+
+  const handleRejectPlan = (planId: string, feedback?: string) => {
+    if (socket.current?.readyState === WebSocket.OPEN) {
+      socket.current.send(
+        JSON.stringify({
+          kind: 'reject_plan',
+          planId,
+          conversationId: state.conversationId,
+          feedback: feedback || 'Plan rejected',
+        })
+      );
+    }
+  };
+
+
+  const showHero = state.messages.length === 0;
+
+  return (
+    <div className="h-screen flex">
+      <ResizablePanel defaultWidth={25} minWidth={20} maxWidth={40}>
+        <div className="h-full border-r border-black/10 flex flex-col relative overflow-hidden">
+          <div
+            className={`absolute inset-0 flex items-center justify-center px-8 transition-all ease-in-out z-10 ${
+              showHero
+                ? 'opacity-100 scale-100 translate-y-0'
+                : 'opacity-0 scale-95 -translate-y-12 pointer-events-none'
+            }`}
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+            <HeroSection />
+          </div>
+
+          <div
+            className={`flex-1 flex flex-col overflow-hidden transition-all duration-700 ease-in-out z-0 ${
+              !showHero
+                ? 'opacity-100 translate-x-0'
+                : 'opacity-0 translate-x-8 pointer-events-none'
+            }`}
           >
-            Read our docs
-          </a>
+            <div className="flex-shrink-0 px-6 py-5 flex items-center justify-between border-b border-black/10">
+              <button
+                onClick={handleNewChat}
+                className="text-[14px] text-black/60 hover:text-black transition-colors"
+              >
+                New Chat
+              </button>
+              <Image
+                src="/arc-logo.png"
+                alt="Arc AI"
+                width={80}
+                height={21}
+                priority
+              />
+              <div className="w-[70px]"></div>
+            </div>
+
+            <div
+              ref={chatScrollRef}
+              className="flex-1 overflow-y-auto min-h-0 px-6 pt-6 pb-6"
+            >
+              <ChatFeed 
+                state={state} 
+                hideHandoffToolCalls={true}
+                onApprovePlan={handleApprovePlan}
+                onRejectPlan={handleRejectPlan}
+              />
+
+              {showThinking && (
+                <div className="text-left transition-all duration-300 opacity-100 mt-4">
+                  <div className="inline-block bg-black/5 rounded-[20px] px-4 py-3 text-[14px] text-black/60 relative overflow-hidden">
+                    <span className="relative z-10">Thinking...</span>
+                    <div className="absolute inset-0 shimmer-effect"></div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <ChatInput
+            onSendMessage={handleSendMessage}
+            disabled={isProcessing}
+            dragActive={dragActive}
+            onDragEnter={handleDrag}
+            onDragLeave={handleDrag}
+            onDragOver={handleDrag}
+            onDrop={handleDrop}
+            plan={state.plan}
+            onApprovePlan={handleApprovePlan}
+            onRejectPlan={handleRejectPlan}
+          />
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
+      </ResizablePanel>
+
+      <ResizablePanel defaultWidth={50} minWidth={35} maxWidth={70} showRightHandle={state.design ? true : false}>
+        <div className="h-full flex flex-col">
+          {state.design && (
+            <DesignHeader 
+              onExport={handleExport}
+              designWidth={state.design.width}
+              designHeight={state.design.height}
+              onSave={handleSaveDesign}
+              onLoadVersion={handleLoadVersion}
+              isDirty={isDirty}
+            />
+          )}
+          <div className="flex-1 overflow-hidden">
+            <DesignCanvas 
+              ref={designCanvasRef} 
+              design={state.design}
+              onSelectionChange={setSelectedOperationId}
+            />
+          </div>
+        </div>
+      </ResizablePanel>
+
+      {state.design && (
+        <div className="flex-1 h-full">
+          <PropertiesPanel
+            selectedOperationId={selectedOperationId}
+            design={state.design}
+            onUpdate={handleUpdateOperation}
+            onDelete={handleDeleteOperation}
+            onBringForward={handleBringForward}
+            onSendBackward={handleSendBackward}
           />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+        </div>
+      )}
     </div>
   );
 }
