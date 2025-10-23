@@ -24,7 +24,7 @@ function HomeContent() {
   const designCanvasRef = useRef<DesignCanvasRef>(null);
   const router = useRouter();
   const searchParams = useSearchParams();
-  const wsUrl = 'ws://0.0.0.0:8787';
+  const wsUrl = 'ws://localhost:8787';
   const { state, socket, dispatch } = useRunWS({ url: wsUrl });
 
   useEffect(() => {

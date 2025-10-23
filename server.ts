@@ -1108,10 +1108,10 @@ function addOperationToDesign(conversationId: string, operation: DesignOperation
 
 const wss = new WebSocketServer({ 
   port: 8787,
-  host: '0.0.0.0',
+  host: 'localhost',
   verifyClient: () => true,
 });
-console.log('Running ws on ws://0.0.0.0:8787');
+console.log('Running ws on wss://localhost:8787');
 
 wss.on('connection', (ws) => {
   ws.on('close', () => {
