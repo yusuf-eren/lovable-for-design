@@ -1050,23 +1050,6 @@ REMEMBER: ALWAYS call planning-agent FIRST, wait for approval, then execute!`,
   model,
 });
 
-// const generalAgent = new Agent({
-//   name: 'general-agent',
-//   instructions: 'Handle general requests. Route design requests to the design agent.',
-//   tools: [getWeatherTool],
-//   model,
-// });
-
-// const mailAgent = new Agent({
-//   name: 'mail-agent',
-//   instructions: 'Manage emails - read inbox and send emails',
-//   tools: [getMailsTool, sendMailTool],
-//   model,
-// });
-
-// generalAgent.handoffs.push(handoff(mailAgent));
-// generalAgent.handoffs.push(handoff(designAgent));
-
 // ----- WS + Sessions -----
 type Session = {
   ws: any;
@@ -1123,7 +1106,10 @@ function addOperationToDesign(conversationId: string, operation: DesignOperation
   return design;
 }
 
-const wss = new WebSocketServer({ port: 8787 });
+const wss = new WebSocketServer({ 
+  port: 8787,
+  verifyClient: () => true,
+});
 console.log('Running ws on ws://localhost:8787');
 
 wss.on('connection', (ws) => {
