@@ -1,5 +1,6 @@
 'use client';
 
+import { Suspense } from 'react';
 import Image from 'next/image';
 import { useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -13,7 +14,7 @@ import { PropertiesPanel } from '@/app/components/PropertiesPanel';
 import { ResizablePanel } from '@/app/components/ResizablePanel';
 import type { DesignOperation } from '@/app/types/design';
 
-export default function Home() {
+function HomeContent() {
   const [dragActive, setDragActive] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [showThinking, setShowThinking] = useState(false);
@@ -350,5 +351,13 @@ export default function Home() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function Home() {
+  return (
+    <Suspense fallback={<div className="h-screen w-screen bg-white" />}>
+      <HomeContent />
+    </Suspense>
   );
 }
