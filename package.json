@@ -3,10 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack",
-    "server": "tsx watch server.ts",
+    "dev": "concurrently \"npm run dev:next\" \"npm run dev:server\"",
+    "dev:next": "next dev --turbopack",
+    "dev:server": "tsx watch server.ts",
     "build": "next build --turbopack",
-    "start": "next start",
+    "start": "concurrently \"npm run start:next\" \"npm run start:server\"",
+    "start:next": "next start",
+    "start:server": "tsx server.ts",
     "lint": "eslint"
   },
   "dependencies": {
@@ -32,9 +35,11 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "concurrently": "^9.1.2",
     "eslint": "^9",
     "eslint-config-next": "15.5.6",
     "tailwindcss": "^4",
+    "tsx": "^4.19.2",
     "typescript": "^5"
   }
 }

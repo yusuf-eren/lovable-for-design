@@ -23,7 +23,6 @@ export function PropertiesPanel({
 }: PropertiesPanelProps) {
   const [localValues, setLocalValues] = useState<any>({});
   const [editingOperationId, setEditingOperationId] = useState<string | null>(null);
-  const [isEditing, setIsEditing] = useState(false);
 
   const selectedOperation = useMemo(() => {
     if (!selectedOperationId || !design) return null;
@@ -31,47 +30,49 @@ export function PropertiesPanel({
   }, [selectedOperationId, design]);
 
   useEffect(() => {
-    if (selectedOperationId !== editingOperationId && !isEditing) {
-      if (selectedOperation && (selectedOperation.type === 'shape' || selectedOperation.type === 'text' || selectedOperation.type === 'image')) {
-        const obj = selectedOperation.object;
-        setLocalValues({
+    if (selectedOperationId !== editingOperationId) {
+      if (!selectedOperationId || !design) {
+        setLocalValues({});
+        setEditingOperationId(null);
+        return;
+      }
+
+      const operation = design.operations.find((op: DesignOperation) => op.id === selectedOperationId);
+      
+      if (operation && (operation.type === 'shape' || operation.type === 'text' || operation.type === 'image')) {
+        const obj = operation.object;
+        const newValues = {
           x: obj.left,
           y: obj.top,
           fill: obj.fill,
           opacity: obj.opacity,
           rotation: obj.angle,
-          ...(selectedOperation.type === 'shape' && {
+          ...(operation.type === 'shape' && {
             width: obj.width,
             height: obj.height,
             radius: obj.radius,
           }),
-          ...(selectedOperation.type === 'text' && {
+          ...(operation.type === 'text' && {
             text: obj.text,
             fontSize: obj.fontSize,
             fontFamily: obj.fontFamily,
             fontWeight: obj.fontWeight,
           }),
-        });
+        };
+        setLocalValues(newValues);
         setEditingOperationId(selectedOperationId);
       } else {
         setLocalValues({});
         setEditingOperationId(null);
       }
     }
-  }, [selectedOperationId, editingOperationId, isEditing, selectedOperation]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedOperationId]);
 
   const handleChange = (key: string, value: any) => {
     if (!selectedOperation) return;
     setLocalValues((prev: any) => ({ ...prev, [key]: value }));
     onUpdate(selectedOperation.id, { [key]: value });
-  };
-
-  const handleFocus = () => {
-    setIsEditing(true);
-  };
-
-  const handleBlur = () => {
-    setIsEditing(false);
   };
 
   if (!selectedOperation || (selectedOperation.type !== 'shape' && selectedOperation.type !== 'text' && selectedOperation.type !== 'image')) {
@@ -128,8 +129,6 @@ export function PropertiesPanel({
               <textarea
                 value={localValues.text || ''}
                 onChange={(e) => handleChange('text', e.target.value)}
-                onFocus={handleFocus}
-                onBlur={handleBlur}
                 className="w-full px-3 py-2 text-[13px] border border-black/10 rounded-lg focus:outline-none focus:border-black resize-none"
                 rows={3}
               />
@@ -142,8 +141,6 @@ export function PropertiesPanel({
                   type="number"
                   value={localValues.fontSize || 16}
                   onChange={(e) => handleChange('fontSize', parseFloat(e.target.value))}
-                  onFocus={handleFocus}
-                  onBlur={handleBlur}
                   className="w-full px-3 py-1.5 text-[13px] border border-black/10 rounded-lg focus:outline-none focus:border-black"
                 />
               </div>
@@ -171,8 +168,6 @@ export function PropertiesPanel({
                 type="text"
                 value={localValues.fontFamily || 'Arial'}
                 onChange={(e) => handleChange('fontFamily', e.target.value)}
-                onFocus={handleFocus}
-                onBlur={handleBlur}
                 className="w-full px-3 py-1.5 text-[13px] border border-black/10 rounded-lg focus:outline-none focus:border-black"
               />
             </div>
@@ -187,8 +182,6 @@ export function PropertiesPanel({
                 type="number"
                 value={localValues.width || 0}
                 onChange={(e) => handleChange('width', parseFloat(e.target.value))}
-                onFocus={handleFocus}
-                onBlur={handleBlur}
                 className="w-full px-3 py-1.5 text-[13px] border border-black/10 rounded-lg focus:outline-none focus:border-black"
               />
             </div>
@@ -198,8 +191,6 @@ export function PropertiesPanel({
                 type="number"
                 value={localValues.height || 0}
                 onChange={(e) => handleChange('height', parseFloat(e.target.value))}
-                onFocus={handleFocus}
-                onBlur={handleBlur}
                 className="w-full px-3 py-1.5 text-[13px] border border-black/10 rounded-lg focus:outline-none focus:border-black"
               />
             </div>
@@ -213,8 +204,6 @@ export function PropertiesPanel({
               type="number"
               value={localValues.radius || 0}
               onChange={(e) => handleChange('radius', parseFloat(e.target.value))}
-              onFocus={handleFocus}
-              onBlur={handleBlur}
               className="w-full px-3 py-1.5 text-[13px] border border-black/10 rounded-lg focus:outline-none focus:border-black"
             />
           </div>
@@ -227,8 +216,6 @@ export function PropertiesPanel({
               type="number"
               value={localValues.x || 0}
               onChange={(e) => handleChange('x', parseFloat(e.target.value))}
-              onFocus={handleFocus}
-              onBlur={handleBlur}
               className="w-full px-3 py-1.5 text-[13px] border border-black/10 rounded-lg focus:outline-none focus:border-black"
             />
           </div>
@@ -238,8 +225,6 @@ export function PropertiesPanel({
               type="number"
               value={localValues.y || 0}
               onChange={(e) => handleChange('y', parseFloat(e.target.value))}
-              onFocus={handleFocus}
-              onBlur={handleBlur}
               className="w-full px-3 py-1.5 text-[13px] border border-black/10 rounded-lg focus:outline-none focus:border-black"
             />
           </div>
@@ -260,8 +245,6 @@ export function PropertiesPanel({
               type="text"
               value={localValues.fill || '#000000'}
               onChange={(e) => handleChange('fill', e.target.value)}
-              onFocus={handleFocus}
-              onBlur={handleBlur}
               className="flex-1 px-3 py-1.5 text-[13px] border border-black/10 rounded-lg focus:outline-none focus:border-black font-mono"
             />
           </div>
